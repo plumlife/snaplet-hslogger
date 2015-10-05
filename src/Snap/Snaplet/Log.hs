@@ -5,6 +5,7 @@
 module Snap.Snaplet.Log
   ( initLogger ) where
 
+import           Control.Applicative
 import           Control.Monad             (liftM)
 import           Control.Monad.IO.Class    (liftIO)
 import           Data.Configurator
@@ -24,22 +25,17 @@ import           System.Log.Logger
 initLogger :: SnapletInit b ()
 initLogger = makeSnaplet "hslogger" description datadir $ do
     conf <- getSnapletUserConfig
-
-    logname   <- liftIO $ require conf "default_logger"
-    loglevel  <- liftIO $ require conf "log_level"
-    logformat <- liftIO $ require conf "log_format"
-    logfile   <- liftIO $ require conf "log_file"
-
-    let lvl = (read loglevel) :: Priority
-
-    h <- liftIO $ fileHandler logfile lvl >>= \lh -> return $
-        setFormatter lh (simpleLogFormatter logformat)
-
-    liftIO $ updateGlobalLogger logname (addHandler h)
-    liftIO $ updateGlobalLogger logname (setLevel lvl)
-
-    liftIO $ noticeM logname $ "Configured the logger with a level of: " ++ (show loglevel)
-
+    liftIO $ do
+     logname   <- require conf "default_logger"
+     loglevel  <- require conf "log_level"
+     logformat <- require conf "log_format"
+     logfile   <- require conf "log_file"
+     let lvl = read loglevel :: Priority
+     h <- flip setFormatter (simpleLogFormatter logformat)
+            <$> fileHandler logfile lvl
+     updateGlobalLogger rootLoggerName removeHandler
+     updateGlobalLogger logname (setLevel lvl . setHandlers [h])
+     noticeM logname $ "Configured the logger with a level of: " ++ show lvl
   where
     description = "Snaplet for HSLogger library"
     datadir = Just $ liftM (++"/resources/hslogger") getDataDir
